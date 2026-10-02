@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>计算器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+  }
+  .calculator {
+    width: 320px;
+    background: #1c1c1e;
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .display {
+    background: #2c2c2e;
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    text-align: right;
+    overflow: hidden;
+  }
+  .expression {
+    color: #8e8e93;
+    font-size: 16px;
+    min-height: 22px;
+    word-break: break-all;
+  }
+  .result {
+    color: #fff;
+    font-size: 44px;
+    font-weight: 300;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+  }
+  .buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  button {
+    border: none;
+    border-radius: 50%;
+    aspect-ratio: 1;
+    font-size: 22px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform .08s, opacity .15s;
+    background: #505050;
+    color: #fff;
+  }
+  button:hover { opacity: .82; }
+  button:active { transform: scale(.94); }
+  button.func   { background: #a5a5a5; color: #1c1c1e; }
+  button.op     { background: #ff9f0a; }
+  button.eq     { background: #ff9f0a; }
+  button.zero   { aspect-ratio: auto; border-radius: 28px; grid-column: span 2; }
+</style>
+</head>
+<body>
+  <div class="calculator">
+    <div class="display">
+      <div class="expression" id="expr"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="buttons">
+      <button class="func" data-key="clear">AC</button>
+      <button class="func" data-key="sign">±</button>
+      <button class="func" data-key="percent">%</button>
+      <button class="op"   data-key="/">÷</button>
+
+      <button data-key="7">7</button>
+      <button data-key="8">8</button>
+      <button data-key="9">9</button>
+      <button class="op" data-key="*">×</button>
+
+      <button data-key="4">4</button>
+      <button data-key="5">5</button>
+      <button data-key="6">6</button>
+      <button class="op" data-key="-">−</button>
+
+      <button data-key="1">1</button>
+      <button data-key="2">2</button>
+      <button data-key="3">3</button>
+      <button class="op" data-key="+">+</button>
+
+      <button class="zero" data-key="0">0</button>
+      <button data-key=".">.</button>
+      <button class="eq" data-key="equal">=</button>
+    </div>
+  </div>
+
+<script>
+  // ===== 状态 =====
+  let expr = "";        // 显示的表达式字符串
+  let lastResult = "0"; // 当前结果
+  let justEvaluated = false; // 是否刚按了等号
+
+  const exprEl = document.getElementById("expr");
+  const resultEl = document.getElementById("result");
+
+  // ===== 安全求值：只允许数字和四则运算 =====
+  function safeEval(str) {
+    if (!/^[0-9+\-*/.()%\s]*$/.test(str)) throw new Error("非法字符");
+    // 百分号转成 /100
+    str = str.replace(/(\d+(?:\.\d+)?)%/g, "($1/100)");
+    const val = Function('"use strict"; return (' + str + ")")();
+    if (!isFinite(val)) throw new Error("无法计算");
+    return val;
+  }
+
+  // ===== 格式化数字显示 =====
+  function fmt(n) {
+    if (typeof n !== "number") return n;
+    // 整数直接显示，浮点数保留 10 位并去尾零
+    const s = Math.abs(n) < 1e12 ? String(Math.round(n * 1e10) / 1e10) : String(n);
+    return s.length > 12 ? n.toPrecision(10) : s;
+  }
+
+  // ===== 实时预览结果 =====
+  function preview() {
+    try {
+      if (expr) lastResult = fmt(safeEval(expr));
+      else lastResult = "0";
+    } catch {
+      lastResult = "—";
+    }
+    render();
+  }
+
+  // ===== 渲染 =====
+  function render() {
+    exprEl.textContent = expr.replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−");
+    resultEl.textContent = lastResult;
+  }
+
+  // ===== 按键逻辑 =====
+  function press(key) {
+    // 按等号之后，输入新数字视为重新开始；输入运算符则接着算
+    if (justEvaluated && (/[0-9.]/.test(key) || key === "clear" || key === "sign" || key === "percent")) {
+      if (key !== "clear") { expr = ""; lastResult = "0"; }
+      justEvaluated = false;
+    }
+
+    switch (key) {
+      case "clear":
+        expr = ""; lastResult = "0"; justEvaluated = false;
+        break;
+      case "equal":
+        if (!expr) break;
+        try {
+          lastResult = fmt(safeEval(expr));
+          expr = lastResult;
+          justEvaluated = true;
+          render();
+          return;
+        } catch {
+          lastResult = "错误"; justEvaluated = true;
+          render();
+          return;
+        }
+      case "sign": {
+        // 切换最后一个数字的正负号
+        const m = expr.match(/(\d+\.?\d*)$/);
+        if (m) {
+          const num = m[1];
+          const neg = num.startsWith("-");
+          expr = expr.slice(0, m.index) + (neg ? num.slice(1) : "-" + num);
+        }
+        break;
+      }
+      case "percent": {
+        const m = expr.match(/(\d+\.?\d*)$/);
+        if (m) {
+          const v = String(parseFloat(m[1]) / 100);
+          expr = expr.slice(0, m.index) + v;
+        }
+        break;
+      }
+      default:
+        // 防止连续两个运算符 / 连续小数点
+        if (/[+*/]/.test(key) && /[+*/]$/.test(expr)) break;
+        if (key === "." && /\.\d*$/.test(expr.split(/[+*/%-]/).pop() || "")) break;
+        expr += key;
+        if (expr === "." ) expr = "0.";
+        break;
+    }
+    preview();
+  }
+
+  // ===== 绑定按钮 =====
+  document.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => press(btn.dataset.key));
+  });
+
+  // ===== 键盘支持 =====
+  document.addEventListener("keydown", e => {
+    const k = e.key;
+    if (/[0-9.]/.test(k)) press(k);
+    else if (/[+*/-]/.test(k)) press(k);
+    else if (k === "Enter" || k === "=") { e.preventDefault(); press("equal"); }
+    else if (k === "Escape") press("clear");
+    else if (k === "%") press("percent");
+    else if (k === "Backspace") {
+      expr = expr.slice(0, -1);
+      preview();
+    }
+  });
+
+  render();
+</script>
+</body>
+</html>
